@@ -1,0 +1,290 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Maze Escape</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      background: #1a1a1a;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      padding: 1rem;
+    }
+    h2 {
+      margin-bottom: 0.5rem;
+    }
+    #scoreboard {
+      margin: 0.5rem;
+      font-size: 1rem;
+      font-weight: bold;
+    }
+    #maze-container {
+      position: relative;
+      background: #ccc;
+      margin-top: 1rem;
+      touch-action: none;
+    }
+    .wall {
+      position: absolute;
+      background: #333;
+      z-index: 2;
+    }
+    .horizontal {
+      height: 10px;
+    }
+    .vertical {
+      width: 10px;
+    }
+    #player {
+      position: absolute;
+      background: red;
+      border-radius: 50%;
+      z-index: 3;
+      transition: transform 0.2s ease;
+    }
+    .exit {
+      position: absolute;
+      background: green;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      z-index: 1;
+    }
+    #overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      z-index: 100;
+    }
+    #message {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+    #next-btn {
+      padding: 0.5rem 1rem;
+      background: #00b894;
+      color: white;
+      border: none;
+      font-size: 1rem;
+      cursor: pointer;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h2 id="level-title">Level 1</h2>
+  <div id="scoreboard">
+    Time: <span id="timer">0.00</span>s |
+    Best: <span id="best">--</span>s
+  </div>
+  <div id="maze-container">
+    <div id="player"></div>
+  </div>
+  <div id="overlay">
+    <div id="message">Level Complete!</div>
+    <button id="next-btn" onclick="nextLevel()">Next Level</button>
+  </div>  <script>
+    let level = 1;
+    let mazeSize = 6;
+    let cellSize = 60;
+    let wallSize = 10;
+    let player = { x: 0, y: 0 };
+    let maze = [], gameOver = false;
+    let startTime, timerInterval;
+
+    const container = document.getElementById('maze-container');
+    const playerEl = document.getElementById('player');
+    const overlay = document.getElementById('overlay');
+    const message = document.getElementById('message');
+    const levelTitle = document.getElementById('level-title');
+    const timerEl = document.getElementById('timer');
+    const bestEl = document.getElementById('best');
+
+    function createGrid(size) {
+      let grid = [];
+      for (let y = 0; y < size; y++) {
+        let row = [];
+        for (let x = 0; x < size; x++) {
+          row.push({ x, y, visited: false, walls: [1, 1, 1, 1] });
+        }
+        grid.push(row);
+      }
+      return grid;
+    }
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function generateMaze(x = 0, y = 0) {
+      const cell = maze[y][x];
+      cell.visited = true;
+      const dirs = shuffle([[0, -1], [1, 0], [0, 1], [-1, 0]]);
+      for (const [dx, dy] of dirs) {
+        const nx = x + dx, ny = y + dy;
+        if (ny >= 0 && ny < mazeSize && nx >= 0 && nx < mazeSize) {
+          const neighbor = maze[ny][nx];
+          if (!neighbor.visited) {
+            if (dx === 1) [cell.walls[1], neighbor.walls[3]] = [0, 0];
+            else if (dx === -1) [cell.walls[3], neighbor.walls[1]] = [0, 0];
+            else if (dy === 1) [cell.walls[2], neighbor.walls[0]] = [0, 0];
+            else if (dy === -1) [cell.walls[0], neighbor.walls[2]] = [0, 0];
+            generateMaze(nx, ny);
+          }
+        }
+      }
+    }
+
+    function renderMaze() {
+      container.style.width = container.style.height = mazeSize * cellSize + 'px';
+      container.querySelectorAll('.wall, .exit').forEach(e => e.remove());
+      playerEl.style.width = playerEl.style.height = (cellSize / 3) + 'px';
+
+      for (let y = 0; y < mazeSize; y++) {
+        for (let x = 0; x < mazeSize; x++) {
+          const cell = maze[y][x];
+          const cx = x * cellSize;
+          const cy = y * cellSize;
+
+          const walls = [
+            { show: cell.walls[0], class: 'horizontal', top: cy, left: cx, width: cellSize, height: wallSize },
+            { show: cell.walls[1], class: 'vertical', top: cy, left: cx + cellSize - wallSize, width: wallSize, height: cellSize },
+            { show: cell.walls[2], class: 'horizontal', top: cy + cellSize - wallSize, left: cx, width: cellSize, height: wallSize },
+            { show: cell.walls[3], class: 'vertical', top: cy, left: cx, width: wallSize, height: cellSize }
+          ];
+
+          walls.forEach(w => {
+            if (w.show) {
+              const wall = document.createElement('div');
+              wall.className = `wall ${w.class}`;
+              wall.style.top = w.top + 'px';
+              wall.style.left = w.left + 'px';
+              wall.style.width = w.width + 'px';
+              wall.style.height = w.height + 'px';
+              container.appendChild(wall);
+            }
+          });
+        }
+      }
+
+      const exit = document.createElement('div');
+      exit.className = 'exit';
+      exit.style.left = (mazeSize - 1) * cellSize + 'px';
+      exit.style.top = (mazeSize - 1) * cellSize + 'px';
+      exit.style.width = cellSize + 'px';
+      exit.style.height = cellSize + 'px';
+      exit.textContent = 'EXIT';
+      container.appendChild(exit);
+    }
+
+    function updatePlayer() {
+      playerEl.style.transform = `translate(${player.x * cellSize + cellSize / 3}px, ${player.y * cellSize + cellSize / 3}px)`;
+      if (player.x === mazeSize - 1 && player.y === mazeSize - 1) finishGame();
+    }
+
+    function movePlayer(dx, dy) {
+      if (gameOver) return;
+      const cell = maze[player.y][player.x];
+      if (dx === 1 && !cell.walls[1]) player.x++;
+      else if (dx === -1 && !cell.walls[3]) player.x--;
+      else if (dy === 1 && !cell.walls[2]) player.y++;
+      else if (dy === -1 && !cell.walls[0]) player.y--;
+      updatePlayer();
+    }
+
+    function finishGame() {
+      gameOver = true;
+      clearInterval(timerInterval);
+      const score = ((Date.now() - startTime) / 1000).toFixed(2);
+      message.textContent = `Level Complete! Time: ${score}s`;
+      const bestKey = `maze_best_score_level_${level}`;
+      const best = localStorage.getItem(bestKey);
+      if (!best || parseFloat(score) < parseFloat(best)) localStorage.setItem(bestKey, score);
+      overlay.style.display = 'flex';
+    }
+
+    function initGame() {
+      mazeSize = 5 + level;
+      cellSize = window.innerWidth < 500 ? 40 : 60;
+      player = { x: 0, y: 0 };
+      gameOver = false;
+      levelTitle.textContent = `Level ${level}`;
+      overlay.style.display = 'none';
+
+      const best = localStorage.getItem(`maze_best_score_level_${level}`) || '--';
+      bestEl.textContent = best;
+
+      maze = createGrid(mazeSize);
+      generateMaze();
+      renderMaze();
+      updatePlayer();
+
+      startTime = Date.now();
+      timerInterval = setInterval(() => {
+        if (!gameOver) {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+          timerEl.textContent = elapsed;
+        }
+      }, 100);
+    }
+
+    function nextLevel() {
+      level++;
+      initGame();
+    }
+
+    document.addEventListener('keydown', e => {
+      const key = e.key.toLowerCase();
+      if (key === 'w' || key === 'arrowup') movePlayer(0, -1);
+      if (key === 's' || key === 'arrowdown') movePlayer(0, 1);
+      if (key === 'a' || key === 'arrowleft') movePlayer(-1, 0);
+      if (key === 'd' || key === 'arrowright') movePlayer(1, 0);
+    });
+
+    // Touch gestures
+    let touchStartX = 0, touchStartY = 0;
+    container.addEventListener("touchstart", e => {
+      if (e.touches.length === 1) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }
+    });
+
+    container.addEventListener("touchend", e => {
+      if (e.changedTouches.length === 1) {
+        let dx = e.changedTouches[0].clientX - touchStartX;
+        let dy = e.changedTouches[0].clientY - touchStartY;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          dx > 20 ? movePlayer(1, 0) : dx < -20 && movePlayer(-1, 0);
+        } else {
+          dy > 20 ? movePlayer(0, 1) : dy < -20 && movePlayer(0, -1);
+        }
+      }
+    });
+
+    initGame();
+  </script></body>
+</html>
